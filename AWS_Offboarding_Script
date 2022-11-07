@@ -1,0 +1,100 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]
+then
+  echo "Usage: offboard_aws.sh <username> <aws-profile>"
+  exit 1
+fi
+
+user=$1
+profile1=$2
+echo "User: $user"
+echo "AWS Profile: $profile1"
+
+export AWS_PROFILE=$profile1
+echo "Switched to $profile1 profile"
+
+
+#1. Delete the user's password.
+
+echo "Deleting user login profile"
+echo "aws iam delete-login-profile --user-name $user"
+aws iam delete-login-profile --user-name $user
+
+#2. Delete the user's access keys.
+
+user_access_keys=$(aws iam list-access-keys --user-name $user --query 'AccessKeyMetadata[*].AccessKeyId' --output text)
+
+echo "Deleting user access keys: $user_access_keys"
+for key in $user_access_keys ;
+do
+  echo "aws iam delete-access-key --user-name $user --access-key-id $key"
+  aws iam delete-access-key --user-name $user --access-key-id $key
+done
+
+#3. Delete the user's signing certificate.
+
+echo "Deleting Signing Certificates:"
+certs=("$(aws iam list-signing-certificates --user-name "${user}" | jq -r '.Certificates[] | .CertificateId')")
+if [[ "${#certs}" -gt "0" ]]; then
+    # shellcheck disable=SC2068
+    for cert in ${certs[@]}; do
+        echo -e "\tDeleting cert ${cert}"
+        aws iam delete-signing-certificate --user-name "${user}" --certificate-id "$cert"
+         done
+fi
+
+#4. Delete the user's SSH public key.
+
+#5. Delete the user's Git credentials(specific credentials).
+
+#6. Deactivate the user's multi-factor authentication.
+
+echo "Deleting User's MFA Devices:"
+devs=("$(aws iam list-mfa-devices --user-name "${user}" | jq -r '.MFADevices[] | .SerialNumber')")
+if [[ "${#devs}" -gt "0" ]]; then
+    # shellcheck disable=SC2068
+    for mfa_dev in ${devs[@]}; do
+        echo -e "\tDeleting MFA ${mfa_dev}"
+        aws iam deactivate-mfa-device --user-name "${user}" --serial-number "${mfa_dev}"
+done
+fi
+
+#7. Delete the user's inline policies.
+
+user_policies=$(aws iam list-user-policies --user-name $user --query 'PolicyNames[*]' --output text)
+
+echo "Deleting user policies: $user_policies"
+for policy in $user_policies ;
+do
+  echo "aws iam delete-user-policy --user-name $user --policy-name $policy"
+  aws iam delete-user-policy --user-name $user --policy-name $policy
+done
+
+#8. Detach any managed policies that are attached to the user.
+
+user_attached_policies=$(aws iam list-attached-user-policies --user-name $user --query 'AttachedPolicies[*].PolicyArn' --output text)
+
+echo "Detaching user attached policies: $user_attached_policies"
+for policy_arn in $user_attached_policies ;
+do
+echo "aws iam detach-user-policy --user-name $user --policy-arn $policy_arn"
+  aws iam detach-user-policy --user-name $user --policy-arn $policy_arn
+done
+
+#9. Remove the user from any user groups.
+
+user_groups=$(aws iam list-groups-for-user --user-name $user --query 'Groups[*].GroupName' --output text)
+
+echo "Detaching user attached group: $user_groups"
+for group in $user_groups ;
+do
+  echo "aws iam remove-user-from-group --user-name $user --group-name $group"
+  aws iam remove-user-from-group --user-name $user --group-name $group
+done
+
+#10. Delete the user.
+
+echo "Deleting user: $user"
+echo "aws iam delete-user --user-name $user"
+aws iam delete-user --user-name $user%
