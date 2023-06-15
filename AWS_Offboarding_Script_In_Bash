@@ -11,6 +11,8 @@ profile1=$2
 echo "User: $user"
 echo "AWS Profile: $profile1"
 
+#Allows you to switch between profiles if you have more than one profile
+#that you want to remove the user from
 export AWS_PROFILE=$profile1
 echo "Switched to $profile1 profile"
 
